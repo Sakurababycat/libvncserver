@@ -21,6 +21,7 @@
  * vncviewer.c - the Xt-based VNC viewer.
  */
 
+#include <unistd.h>
 #ifdef WIN32
 #include <winsock2.h>
 #endif
