@@ -40,6 +40,7 @@
 #include "sockets.h"
 #include "tls.h"
 #include "sasl.h"
+#include "unistd.h"
 
 void PrintInHex(char *buf, int len);
 
