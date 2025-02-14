@@ -2184,7 +2184,8 @@ rfbProcessExtendedServerCutTextData(rfbClientPtr cl, uint32_t flags, const char 
         }
         stream.avail_out = size;
         stream.next_out = (unsigned char *)buf;
-        if (inflate(&stream, Z_NO_FLUSH) != Z_OK) {
+        err = inflate(&stream, Z_NO_FLUSH);
+        if (err != Z_OK && err != Z_STREAM_END) {
             rfbLogPerror("rfbProcessExtendedServerCutTextData: zlib inflation error");
             free(buf);
             inflateEnd(&stream);
@@ -2193,7 +2194,7 @@ rfbProcessExtendedServerCutTextData(rfbClientPtr cl, uint32_t flags, const char 
         }
         if (i == 0) {
             /* text */
-            if (!cl->viewOnly) {
+            if (!cl->viewOnly && cl->screen->setXCutTextUTF8) {
                 cl->screen->setXCutTextUTF8(buf, size, cl);
             }
         }
@@ -2465,14 +2466,16 @@ rfbProcessClientNormalMessage(rfbClientPtr cl)
                 break;
 #ifdef LIBVNCSERVER_HAVE_LIBZ
             case rfbEncodingExtendedClipboard:
-                if (!cl->enableExtendedClipboard) {
-                    rfbLog("Enabling ExtendedClipboard extension for client "
-                           "%s\n", cl->host);
-                    cl->enableExtendedClipboard = TRUE;
-                }
-                /* send the capabilities we support, currently only text */
-                if (!rfbSendExtendedClipboardCapability(cl)) {
-                    return;
+                if (cl->screen->setXCutTextUTF8) {
+                    if (!cl->enableExtendedClipboard) {
+                        rfbLog("Enabling ExtendedClipboard extension for client "
+                               "%s\n", cl->host);
+                        cl->enableExtendedClipboard = TRUE;
+                    }
+                    /* send the capabilities we support, currently only text */
+                    if (!rfbSendExtendedClipboardCapability(cl)) {
+                        return;
+                    }
                 }
                 break;
 #endif
@@ -4049,9 +4052,9 @@ rfbSendServerCutTextUTF8(rfbScreenInfoPtr rfbScreen,char *str, int len, char *fa
     iterator = rfbGetClientIterator(rfbScreen);
     while ((cl = rfbClientIteratorNext(iterator)) != NULL) {
         sct.type = rfbServerCutText;
-        sct.length = Swap32IfLE(len);
         LOCK(cl->sendMutex);
         if (cl->enableExtendedClipboard) {
+            sct.length = Swap32IfLE(len);
             if (cl->extClipboardData != NULL) {
                 free(cl->extClipboardData);
                 cl->extClipboardData = NULL;
@@ -4079,6 +4082,7 @@ rfbSendServerCutTextUTF8(rfbScreenInfoPtr rfbScreen,char *str, int len, char *fa
             }
             UNLOCK(cl->sendMutex);
         } else if (fallbackLatin1Str != NULL) {
+            sct.length = Swap32IfLE(latin1Len);
             if (rfbWriteExact(cl, (char *)&sct,
                         sz_rfbServerCutTextMsg) < 0) {
                 rfbLogPerror("rfbSendServerCutText: write");
